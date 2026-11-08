@@ -88,42 +88,43 @@ class vision:
 
 
 class tags_infos:
-    def __init__(self,vision:vision,update_coef:bool,images:list,tags_info_memory_max_len:int,dict_aruco_reel_size:dict,aruco_reel_pos:dict,cam_orientation:tuple,cam_pos:tuple):
+    def __init__(self,vision:vision,update_coef:bool,images:list,dict_aruco_reel_size:dict,aruco_reel_pos:dict,tags_info_memory_max_len:int):
         self.tags_info_memory_max_len=tags_info_memory_max_len
         self.vi=vision
-        self.cam_orientation=self.to_rad_vector(cam_orientation)
-        self.cam_pos=cam_pos
+        self.cam_orientation=None
+        self.cam_pos=None
         self.cam_offset_mesured=np.array([])
         self.dict_aruco_reel_size=dict_aruco_reel_size
         self.aruco_reel_pos=aruco_reel_pos
         self.output_image_detections=None
         self.dict_tags_infos={}
         self.corners_ref=np.array([[-1/2,1/2,0],[1/2,1/2,0],[1/2,-1/2,0],[-1/2,-1/2,0]])
-        self.table_aruco=(20,21,22,23)
-        try:
-            assert update_coef==False
-            self.K,self.D=self.utilities.read_coefs()
-        except:
+        self.table_aruco=(20,21,22,23)#arcuo fixes sur la tables
+        if update_coef:
             self.K,self.D=vi.get_deformation_coefs(images,dim_damier_calib,cell_real_dim=30)
             self.utilities.sav_coefs(self.K,self.D)
-        print(self.K)
-
-    def creat_ref_aruco_tab(self):
+        else:
+            self.K,self.D=self.utilities.read_coefs()
+            
+    def creat_ref_aruco_tab(self,excluded:list):
         new_mat=[]
         for id in self.table_aruco:
-            new_mat.append(self.aruco_reel_pos[id]+self.corners_ref*self.dict_aruco_reel_size[id])
+            if id not in excluded:
+                new_mat.append(self.aruco_reel_pos[id]+self.corners_ref*self.dict_aruco_reel_size[id])
         return np.vstack(new_mat)
 
     def cam_offset_rot_calculation(self,image:Image.Image):
         imagenp=np.array(image)
         detections,ids,rejected=self.vi.det.detectMarkers(imagenp)
+
         #warning pour les aruco de calibration non détecter
-        if len(ids)<len(self.table_aruco):
-            undet=[]
-            for i in self.table_aruco:
-                if i not in ids:
-                    undet.append(i)
-            self.utilities.warning(f"aruco de calibration non détecter: {undet}") 
+        all_tab_aruco_detected=self.utilities.are_all_in_list(ids,self.table_aruco)
+        if all_tab_aruco_detected!=True:
+            if len(all_tab_aruco_detected)==len(self.table_aruco):
+                self.utilities.warning("***************aucun aruco de calibration non détecter /!\\***************\n") 
+                return None
+            else:
+                self.utilities.warning("\n"+"*"*60+f"\naruco de calibration non détecter: {all_tab_aruco_detected}\n"+"*"*60+"\n") 
 
         reshaped_detection=[None]*4 #4aruco sur la table
         for id in range(len(detections)):
@@ -131,12 +132,10 @@ class tags_infos:
                 reshaped_detection[ids[id]-20]=detections[id].reshape((4,2))# -20 pour mettres les ids d'aruco sur [0,3]
         
         reshaped_detection=[M for M in reshaped_detection if M is not None]
-        print(reshaped_detection)
         reshaped_detection=np.array(reshaped_detection).reshape((-1,2))
-
-        sucess,rvec,tvec=cv2.solvePnP(self.creat_ref_aruco_tab().reshape((-1,3)),reshaped_detection,self.K,self.D,flags=cv2.SOLVEPNP_ITERATIVE)
+        sucess,rvec,tvec=cv2.solvePnP(self.creat_ref_aruco_tab(all_tab_aruco_detected if all_tab_aruco_detected != True else []).reshape((-1,3)),reshaped_detection,self.K,self.D,flags=cv2.SOLVEPNP_ITERATIVE)
         rot=cv2.Rodrigues(rvec)[0]
-        oriantation=Rotation.from_matrix(rot.T).as_euler(seq="xyz",degrees=True)#+np.array([180,180,180])
+        oriantation=Rotation.from_matrix(rot.T).as_euler(seq="xyz",degrees=True)
         self.cam_pos=-rot.T@tvec.ravel()
         self.cam_orientation=self.to_rad_vector(oriantation)
         return -rot.T@tvec.ravel(),oriantation
@@ -149,6 +148,13 @@ class tags_infos:
             if not condition:
                 print("warning :",text)
 
+        def are_all_in_list(source,are_in):
+            not_in=[]
+            for e in are_in:
+                if e not in source:
+                    not_in.append(e)
+            return True if len(not_in)==0 else not_in
+        
         def get_rotation_matrix_matrix(self,rx,ry,rz,offx,offy,offz)->np.array:
             cx=np.cos(rx)
             cy=np.cos(ry)
@@ -172,40 +178,7 @@ class tags_infos:
 
         def read_coefs():
             return np.load("k.npy"),np.load("D.npy")
-
-    def calc_cam_reel_pos(self,image:Image.Image):
-        self.cam_offset_mesured=np.array([0,0,0])
-        d=self.get_aruco_pos(image)[0]
-        nb=0
-        offset=np.array([0,0,0])
-        if 20 in d.keys() and 20 in aruco_reel_pos.keys():
-            delta_20=np.array(d[20][-1][0].coo[:3])-np.array(aruco_reel_pos[20])
-            offset+=delta_20.astype(int)
-            nb+=1
-
-        if 21 in d.keys()and 21 in aruco_reel_pos.keys():
-            delta_21=np.array(d[21][-1][0].coo[:3])-np.array(aruco_reel_pos[21])
-            offset+=delta_21.astype(int)
-            nb+=1
-
-        if 22 in d.keys()and 22 in aruco_reel_pos.keys():
-            print(np.array(d[22][-1][0].coo))
-            delta_22=np.array(d[22][-1][0].coo[:3])-np.array(aruco_reel_pos[22])
-            offset+=delta_22.astype(int)
-            nb+=1
-
-        if 23 in d.keys()and 23 in aruco_reel_pos.keys():
-            delta_23=np.array(d[23][-1][0].coo[:3])-np.array(aruco_reel_pos[23])
-            offset+=delta_23.astype(int)
-            nb+=1
-        
-        if nb>0:
-            offset=(delta_20+delta_21+delta_22+delta_23)/nb
-        print(offset.tolist())
-        print(delta_22.tolist(),delta_23.tolist(),delta_20.tolist(),delta_21.tolist())
-        self.cam_offset_mesured=offset
-        
-        
+         
     class aruco_infos_:
         def __init__(self,coo:tuple,orientation:tuple,time:int):
             self.coo=coo
@@ -225,8 +198,6 @@ class tags_infos:
         return angle*m.pi/180
     
     def get_aruco_pos(self,image:Image.Image)->dict:
-        # if len(self.cam_offset_mesured)!=3:
-        #     self.calc_cam_reel_pos(image)
         if self.vi.image_only == True:
             self.rawImage=image
         else:
@@ -277,20 +248,13 @@ aruco_real_size={20:100,21:100,22:100,23:100,13:40,1:74}
 aruco_reel_pos={22:[600,600,0],23:[2400,600,0],20:[600,1400,0],21:[2400,1400,0]}
 vi=vision(image_width=3840,image_height=2160,image_only=image_only)
 images_calib=vi.load_images(folder_path_calibration,images_extentions)
-t=tags_infos(vi,False,images_calib,10,aruco_real_size,aruco_reel_pos,cam_orientation=(50,180,180),cam_pos=(1400,-600,1400))
-
-
-
-
-# while not image_only:
-#     t.aruco_polar_info(None)
-
-print(t.cam_offset_rot_calculation(Image.open("t1.png")))
+tag_det=tags_infos(vi,False,images_calib,aruco_real_size,aruco_reel_pos,tags_info_memory_max_len=10)
 
 single_image=True
 if single_image:
     im=Image.open("t1.png")
-    d,im=t.get_aruco_pos(im)
+    tag_det.cam_offset_rot_calculation(im)
+    d,im=tag_det.get_aruco_pos(im)
     im.show()
     #print("1:",d[1][-1][-1].distance,"22:",d[22][-1][-1].distance)
 else:
@@ -300,8 +264,8 @@ else:
     for im in ImageSequence.Iterator(gif):
         print(id_)
         id_+=1
-        d=t.get_aruco_pos(im.convert("RGB"))[0]
-        images_out.append(t.output_image_detections.resize((1920,1080)))
+        d=tag_det.get_aruco_pos(im.convert("RGB"))[0]
+        images_out.append(tag_det.output_image_detections.resize((1920,1080)))
 
     images_out[0].save("animation.gif",save_all=True,append_images=images_out[1:],duration=100, loop=0 )
 
