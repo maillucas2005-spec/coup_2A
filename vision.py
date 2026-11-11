@@ -21,10 +21,13 @@ class vision:
         self.det=aruco.ArucoDetector(self.codesPossibles,self.detParam)
         self.image_only=image_only
         if not image_only:
+
+            print("direct capture on")
             self.cap=cv2.VideoCapture(2)
+            
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 3840)
             self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 2160)
-            self.image_from_cam=Image.fromarray(self.cap.read()[1])
+            self.image_from_cam=Image.fromarray(cv2.cvtColor(self.cap.read()[1],cv2.COLOR_BGR2RGB))
             cv2.waitKey(1)
             cv2.namedWindow("aruco detector", cv2.WINDOW_NORMAL)
             cv2.resizeWindow("aruco detector",*default_window_size)
@@ -208,17 +211,21 @@ class tags_infos:
     def to_rad(self,angle):
         return angle*m.pi/180
     
-    def get_aruco_pos(self,seeked_tags:tuple,image:Image.Image)->dict:
+    def get_aruco_pos(self,seeked_tags:tuple,image:Image.Image=None)->dict:
         if self.vi.image_only == True:
             self.rawImage=image
         else:
-            self.image_from_cam=Image.fromarray(self.cap.read()[1])
+            print("update")
+            self.image_from_cam=Image.fromarray(cv2.cvtColor(self.vi.cap.read()[1],cv2.COLOR_BGR2RGB))
             cv2.waitKey(1)
             self.rawImage=self.image_from_cam  
         self.imagenp=np.array(self.rawImage) 
 
         detection_timer=timer_cl("detector")
         detections,ids,rejected=self.vi.det.detectMarkers(self.imagenp) 
+        if ids is None:
+            self.utilities.warning("no detection")
+            return self.dict_tags_infos,self.rawImage
         detection_timer.get_dt()
 
         ids=ids.flatten().tolist()
@@ -251,6 +258,7 @@ class tags_infos:
                 else:
                     self.dict_tags_infos[i]=[temp_dic_info[i]]
         detection_timer.get_dt()
+        cv2.imshow("aruco detector",np.array(self.output_image_detections))
         return self.dict_tags_infos,self.output_image_detections
 
     
@@ -272,7 +280,7 @@ vi=vision(image_width=3840,image_height=2160,image_only=image_only)
 images_calib=vi.load_images(folder_path_calibration,images_extentions)
 tag_det=tags_infos(vi,False,images_calib,aruco_real_size,aruco_reel_pos,tags_info_memory_max_len=10)
 
-single_image=True
+single_image=True*image_only
 
 if single_image:
     im=Image.open("t1.png")
@@ -288,9 +296,14 @@ else:
     tag_det.cam_offset_rot_calculation(im)
     begin=time.time()
 
-    timer=timer_cl("****************main****************")
-    d,im=tag_det.get_aruco_pos((1,20,21,22,23),im)
-    timer.get_dt()
+    while True:
+        timer=timer_cl("****************main****************")
+        d,im=tag_det.get_aruco_pos((1,20,21,22,23))
+        if 1 in d.keys():
+            print("1:",d[1])
+        else:
+            print("na")
+        timer.get_dt()
     # gif=Image.open("0001-0115.gif")
     # images_out=[]
     # id_=0
