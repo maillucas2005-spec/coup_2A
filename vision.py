@@ -23,8 +23,9 @@ class vision:
         if not image_only:
 
             print("direct capture on")
-            self.cap=cv2.VideoCapture(2)
-            
+            self.cap= cv2.VideoCapture(0, cv2.CAP_V4L2)
+  
+            print(self.cap.read())
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 3840)
             self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 2160)
             self.image_from_cam=Image.fromarray(cv2.cvtColor(self.cap.read()[1],cv2.COLOR_BGR2RGB))
@@ -218,6 +219,7 @@ class tags_infos:
             print("update")
             self.image_from_cam=Image.fromarray(cv2.cvtColor(self.vi.cap.read()[1],cv2.COLOR_BGR2RGB))
             cv2.waitKey(1)
+            self.image_from_cam.save("aru.png")
             self.rawImage=self.image_from_cam  
         self.imagenp=np.array(self.rawImage) 
 
@@ -238,7 +240,7 @@ class tags_infos:
             if aruco_id in seeked_tags:
                 if aruco_id in self.dict_aruco_reel_size.keys():
                     sucess,rot,coos=cv2.solvePnP(self.corners_ref*self.dict_aruco_reel_size[aruco_id],detections[i],self.K,self.D,flags=cv2.SOLVEPNP_IPPE_SQUARE)
-                    self.utilities.warning("getting coos",sucess)
+                    self.utilities.warning("getting coos failed",sucess)
                     
                     coo,angle=self.utilities().get_corrected_matrix(coos.ravel(),cv2.Rodrigues(rot)[0],*self.cam_orientation,*self.cam_pos)[:3]
                     current_aruco=self.aruco_infos_(tuple(coo.round().tolist()),round(self.to_deg(np.atan2(angle[1,0],angle[0,0])),1),time.time())
@@ -258,7 +260,7 @@ class tags_infos:
                 else:
                     self.dict_tags_infos[i]=[temp_dic_info[i]]
         detection_timer.get_dt()
-        cv2.imshow("aruco detector",np.array(self.output_image_detections))
+        #cv2.imshow("aruco detector",np.array(self.output_image_detections))
         return self.dict_tags_infos,self.output_image_detections
 
     
@@ -273,7 +275,7 @@ class tags_infos:
 images_extentions=["png","jpg"]
 folder_path_calibration="calibration"
 dim_damier_calib=(9,6)
-image_only=False
+image_only=True
 aruco_real_size={20:100,21:100,22:100,23:100,13:40,1:74}
 aruco_reel_pos={22:[600,600,0],23:[2400,600,0],20:[600,1400,0],21:[2400,1400,0]}
 vi=vision(image_width=3840,image_height=2160,image_only=image_only)
@@ -286,7 +288,7 @@ if single_image:
     im=Image.open("t1.png")
     tag_det.cam_offset_rot_calculation(im)
     begin=time.time()
-    for i in range(3):
+    for i in range(4):
         timer=timer_cl("****************main****************")
         d,im=tag_det.get_aruco_pos((1,20,21,22,23),im)
         timer.get_dt()
@@ -296,14 +298,14 @@ else:
     tag_det.cam_offset_rot_calculation(im)
     begin=time.time()
 
-    while True:
-        timer=timer_cl("****************main****************")
-        d,im=tag_det.get_aruco_pos((1,20,21,22,23))
-        if 1 in d.keys():
-            print("1:",d[1])
-        else:
-            print("na")
-        timer.get_dt()
+    
+    timer=timer_cl("****************main****************")
+    d,im=tag_det.get_aruco_pos((1,20,21,22,23))
+    if 1 in d.keys():
+        print("1:",d[1])
+    else:
+        print("na")
+    timer.get_dt()
     # gif=Image.open("0001-0115.gif")
     # images_out=[]
     # id_=0
