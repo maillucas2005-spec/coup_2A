@@ -23,8 +23,7 @@ class vision:
         if not image_only:
 
             print("direct capture on")
-            self.cap= cv2.VideoCapture(0, cv2.CAP_V4L2)
-  
+            self.cap= cv2.VideoCapture(0)
             print(self.cap.read())
             self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 3840)
             self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 2160)
@@ -101,10 +100,18 @@ class timer_cl:
         print(self.name,dt)
         return dt
 
+class mode:
+    def __init__(self,log_timer:bool,draw_boxes:bool,single_image:bool,crop_detection:bool):
+        self.log_timers=log_timer
+        self.draw_boxes=draw_boxes
+        self.single_image=single_image
+        self.crop_detection=crop_detection
+
 class tags_infos:
-    def __init__(self,vision:vision,update_coef:bool,images:list,dict_aruco_reel_size:dict,aruco_reel_pos:dict,tags_info_memory_max_len:int):
+    def __init__(self,vision:vision,detect_mode:mode,update_coef:bool,images:list,dict_aruco_reel_size:dict,aruco_reel_pos:dict,tags_info_memory_max_len:int):
         self.tags_info_memory_max_len=tags_info_memory_max_len
         self.vi=vision
+        self.detect_mode=detect_mode
         self.cam_orientation=None
         self.cam_pos=None
         self.cam_offset_mesured=np.array([])
@@ -195,8 +202,9 @@ class tags_infos:
             return np.load("k.npy"),np.load("D.npy")
          
     class aruco_infos_:
-        def __init__(self,coo:tuple,orientation:tuple,time:int):
-            self.coo=coo
+        def __init__(self,coo:tuple,coo_im:tuple,orientation:tuple,time:int):
+            self.coo_table=coo
+            self.coo_im=coo_im
             self.angle=orientation
             self.time=time
 
@@ -211,30 +219,38 @@ class tags_infos:
     
     def to_rad(self,angle):
         return angle*m.pi/180
-    
-    def get_aruco_pos(self,seeked_tags:tuple,image:Image.Image=None)->dict:
-        if self.vi.image_only == True:
-            self.rawImage=image
-        else:
-            print("update")
-            self.image_from_cam=Image.fromarray(cv2.cvtColor(self.vi.cap.read()[1],cv2.COLOR_BGR2RGB))
-            cv2.waitKey(1)
-            self.image_from_cam.save("aru.png")
-            self.rawImage=self.image_from_cam  
-        self.imagenp=np.array(self.rawImage) 
 
-        detection_timer=timer_cl("detector")
-        detections,ids,rejected=self.vi.det.detectMarkers(self.imagenp) 
+    def crop_detection(self,coo:np._ArrayFloat_co,dim:tuple,npimage):
+        croped=npimage[coo[1]:coo[1]+dim[1],coo[0]:coo[0]+dim[0]]
+        detections_old,ids,rejected=self.vi.det.detectMarkers(croped) 
+        detections_corected=np.array([d+coo for d in detections_old]) #1615,1156 a (702.0, 1329.0, 428.0, 1.0) +900 -150
+        return detections_corected,ids,rejected,croped
+
+    
+    def get_aruco_pos(self,seeked_tags:tuple,image:Image.Image=None,crop_detection_coo:list=None,crop_detection_dim:list=None)->dict:
+        if self.detect_mode.single_image:
+            self.rawImage=image
+            self.imagenp=np.array(self.rawImage) 
+        else:
+            self.imagenp=self.vi.cap.read()[1]#pour avoir les bonnes couleurs:cv2.cvtColor(self.vi.cap.read()[1],cv2.COLOR_BGR2RGB)
+            cv2.waitKey(1)
+            self.rawImage=Image.fromarray(self.imagenp)
+        self.output_image_detections=self.rawImage.copy()
+        detection_timer=timer_cl("detector") if self.detect_mode.log_timers else 0
+        detections,ids,rejected,self.imagenp=(self.crop_detection(np.array(crop_detection_coo),crop_detection_dim,self.imagenp) if self.detect_mode.crop_detection else (*self.vi.det.detectMarkers(self.imagenp),self.imagenp))
+        self.rawImage=Image.fromarray(self.imagenp)
+       
+
         if ids is None:
             self.utilities.warning("no detection")
             return self.dict_tags_infos,self.rawImage
-        detection_timer.get_dt()
+        detection_timer.get_dt() if self.detect_mode.log_timers else 0
 
         ids=ids.flatten().tolist()
-        self.output_image_detections=self.rawImage.copy()
+        
         temp_dic_info={}
 
-        detection_timer=timer_cl("loop")
+        detection_timer=timer_cl("loop") if self.detect_mode.log_timers else 0
         for i in range(len(ids)):
             aruco_id=ids[i]
             if aruco_id in seeked_tags:
@@ -243,29 +259,29 @@ class tags_infos:
                     self.utilities.warning("getting coos failed",sucess)
                     
                     coo,angle=self.utilities().get_corrected_matrix(coos.ravel(),cv2.Rodrigues(rot)[0],*self.cam_orientation,*self.cam_pos)[:3]
-                    current_aruco=self.aruco_infos_(tuple(coo.round().tolist()),round(self.to_deg(np.atan2(angle[1,0],angle[0,0])),1),time.time())
+                    current_aruco=self.aruco_infos_(tuple(coo.round().tolist()),detections[i],round(self.to_deg(np.atan2(angle[1,0],angle[0,0])),1),time.time())
                     if aruco_id not in temp_dic_info.keys():
                         temp_dic_info[aruco_id]=[current_aruco]
                     else:
                         temp_dic_info[aruco_id].append(current_aruco)
-                    self.draw_aruco_boxs(list(detections[i])[0],self.output_image_detections)
-                    self.draw_text(self.output_image_detections,str(aruco_id)+str(current_aruco.coo[:3])+str(current_aruco.angle),detections[i][0][0],30)
-        detection_timer.get_dt()
-
-        detection_timer=timer_cl("di")
+                    #print(detections)
+                    self.draw_aruco_boxs(list(detections[i])[0],self.output_image_detections) if self.detect_mode.draw_boxes else 0
+                    self.draw_text(self.output_image_detections,str(aruco_id)+str(current_aruco.coo_table[:3])+str(current_aruco.angle),detections[i][0][0],30) if self.detect_mode.draw_boxes else 0
+        detection_timer.get_dt() if self.detect_mode.log_timers else 0
+        detection_timer=timer_cl("di") if self.detect_mode.log_timers else 0
         for i in ids:
             if i in temp_dic_info.keys():
                 if i in self.dict_tags_infos.keys():
                     self.dict_tags_infos[i].append(temp_dic_info[i])
                 else:
                     self.dict_tags_infos[i]=[temp_dic_info[i]]
-        detection_timer.get_dt()
+        detection_timer.get_dt() if self.detect_mode.log_timers else 0
         #cv2.imshow("aruco detector",np.array(self.output_image_detections))
         return self.dict_tags_infos,self.output_image_detections
 
     
     def draw_aruco_boxs(self,coos,im:Image.Image):
-        ImageDraw.Draw(im).polygon(coos,outline="red", width=8)
+        ImageDraw.Draw(im).polygon(coos.flatten().tolist(),outline="red", width=8)
 
     def draw_text(self,im:Image.Image,text:str,coo:tuple,size:int):
         ImageDraw.Draw(im).text(coo,text,font=ImageFont.load_default(size=size),fill="black")
@@ -275,23 +291,35 @@ class tags_infos:
 images_extentions=["png","jpg"]
 folder_path_calibration="calibration"
 dim_damier_calib=(9,6)
-image_only=True
+images_total_res=(3840,2160)
 aruco_real_size={20:100,21:100,22:100,23:100,13:40,1:74}
 aruco_reel_pos={22:[600,600,0],23:[2400,600,0],20:[600,1400,0],21:[2400,1400,0]}
-vi=vision(image_width=3840,image_height=2160,image_only=image_only)
+detection_mode=mode(log_timer=True,draw_boxes=True,single_image=True,crop_detection=False)
+vi=vision(*images_total_res,image_only=detection_mode.single_image)
 images_calib=vi.load_images(folder_path_calibration,images_extentions)
-tag_det=tags_infos(vi,False,images_calib,aruco_real_size,aruco_reel_pos,tags_info_memory_max_len=10)
 
-single_image=True*image_only
+tag_det=tags_infos(vi,detection_mode,False,images_calib,aruco_real_size,aruco_reel_pos,tags_info_memory_max_len=10)
 
-if single_image:
+crop_detection_dim=(round(0.2*images_total_res[0]),round(0.2*images_total_res[0]))
+if detection_mode.single_image:
     im=Image.open("t1.png")
     tag_det.cam_offset_rot_calculation(im)
     begin=time.time()
-    for i in range(4):
-        timer=timer_cl("****************main****************")
-        d,im=tag_det.get_aruco_pos((1,20,21,22,23),im)
-        timer.get_dt()
+
+    timer=timer_cl("****************main****************")
+    d,im_out=tag_det.get_aruco_pos((1,13,20,21,22,23),im,crop_detection_dim=crop_detection_dim)
+    timer.get_dt()
+    print(d[21][0][-1].coo_im[0][0])
+    timer=timer_cl("****************main****************")
+    tag_det.detect_mode=mode(log_timer=True,draw_boxes=True,single_image=True,crop_detection=True)
+    center=l=np.array([round(d[1][0][-1].coo_im[0][0][0]-crop_detection_dim[0]/2),round(d[1][0][-1].coo_im[0][0][1]-crop_detection_dim[0]/2)])
+    d,im_out=tag_det.get_aruco_pos((1,13,20,21,22,23),im,crop_detection_coo=center,crop_detection_dim=crop_detection_dim)
+    timer.get_dt()
+
+    print(np.array([center,center+np.array(crop_detection_dim)]).flatten().tolist())
+    ImageDraw.ImageDraw(im_out).rectangle(np.array([center,center+np.array(crop_detection_dim)]).flatten().tolist(),width=8,outline="blue")
+    im_out.show()
+    
 
 else:
     im=Image.open("t1.png")
