@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "robot-eirbot-2A-cdf-2027"
+version = "1.0.0"
+dependencies = [
+  "opencv",
+  "pillow",
+  "numpy"
+]

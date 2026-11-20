@@ -1,0 +1,64 @@
+À quoi ça sert ?
+  Quand on fait un projet il a souvent besoin de dépendences. Par exemple,
+  ici notre porjet a besoin de openCV, python, pillow... Dans un monde où
+  on fait un seul projet avec un seul contributeur, on a juste à les
+  installersur notre machine mais c'est parfois plus compliqué. D'une part
+  quand on travaille sur plusieurs projets, les dépendences des différents
+  projets peuvent entrer en conflit. D'autre part, quand on travaille à
+  plusieurs, chaque contributeur doit chercher les dépendences et les
+  installer.
+  C'est pour répondre à ces problèmes qu'on utilise un outil de gestion
+  de dépendences. Ici, j'ai choisi setuptools.
+
+Concrètement comment ça marche ?
+  Concrètement, python a un système d'environement virtuel qui contient
+  toutes les dépendences, y compris l'interpréteur python lui-même. Dans
+  cet environement un outil (ici setuptools) met en place toutes les
+  dépendences en suivant les dépendences qu'on lui a décrit dans un
+  fichier. Ici, j'ai choisi de décrire le projet dans pyproject.toml.
+
+Comment utiliser ces outils
+  Prérequis:
+    Bien que le but soit de ne pas avoir à tout réinstaller à chaque fois,
+    on a quand même besoin de machinerie pour gèrer les dépendences dans
+    les projets.
+    Premièrement, sur notre machine hôte, on a besoin de python. Ensuite,
+    c'est pip qui vient avec python qu'on va utiliser pour mettre en place
+    notre projet. Toujours dans les prérequis, on va déjà l'utiliser pour
+    installer nos outils:
+      `pip install --upgrade build`
+  Setup un projet:
+    Arboressance
+      Il est préfèrable de disposer les ficher selon certaines
+      arboressances. J'ai choisi elle :
+        racine du repo
+        |   # Tous les fichier généraux qui parlent du projet
+        |   # README.rst or README.md (a nice description of your package)
+        ├── pyproject.toml  # and/or setup.cfg/setup.py (depending on the configuration method)
+        ├── ressources
+        |   |   # Tous les fichiers utilisé à l'execution
+        |   └── calibration
+        ├── test
+        |   |   # Tous les fichiers utilisé à l'execution
+        |   └── vision
+        |       |   # les tests de la vision
+        |       └── test.py
+        └── src
+            |   # Toutes les paties de code tous sujets confondus
+            └── vision # le code de la vision dans la version où il est utilisable par le robot
+                ├── __init__.py # Fichier exécuté quand on import cette lib, là où on interface avec l'exterieur
+                ├── __main__.py # Point d'entré quand on executre notre lib comme un standalone avec python -m
+                └── ... (other Python files)
+    Faire le toml
+      C'est long et chiant, j'ai la flemme pondre un pavé. Pour cette
+      partie. J'en ai fais un, c'est facile de l'adapter. C'est expliqué
+      dans les sources.
+    Créer l'environement virtuel (.venv)
+      - on se place dans le repertoire du repo
+      - on exectute l'outil qui crée le venv : `python -m venv .venv`
+      - on u
+
+Sources :
+https://realpython.com/python-pyproject-toml/#setting-up-a-python-project-with-pyprojecttoml
+https://packaging.python.org/en/latest/guides/writing-pyproject-toml/
+https://setuptools.pypa.io/en/latest/userguide/quickstart.html
