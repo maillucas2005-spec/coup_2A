@@ -1,0 +1,2 @@
+[console_scripts]
+vision = vision.__main__:main

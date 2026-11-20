@@ -1,0 +1,10 @@
+pyproject.toml
+src/robot_eirbot_2A_cdf_2027.egg-info/PKG-INFO
+src/robot_eirbot_2A_cdf_2027.egg-info/SOURCES.txt
+src/robot_eirbot_2A_cdf_2027.egg-info/dependency_links.txt
+src/robot_eirbot_2A_cdf_2027.egg-info/entry_points.txt
+src/robot_eirbot_2A_cdf_2027.egg-info/requires.txt
+src/robot_eirbot_2A_cdf_2027.egg-info/top_level.txt
+src/vision/__init__.py
+src/vision/__main__.py
+src/vision/vision.py

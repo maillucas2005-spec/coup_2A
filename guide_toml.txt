@@ -17,7 +17,7 @@ Concrètement comment ça marche ?
   dépendences en suivant les dépendences qu'on lui a décrit dans un
   fichier. Ici, j'ai choisi de décrire le projet dans pyproject.toml.
 
-Comment utiliser ces outils
+Comment utiliser ces outils ?
   Prérequis:
     Bien que le but soit de ne pas avoir à tout réinstaller à chaque fois,
     on a quand même besoin de machinerie pour gèrer les dépendences dans
@@ -56,7 +56,11 @@ Comment utiliser ces outils
     Créer l'environement virtuel (.venv)
       - on se place dans le repertoire du repo
       - on exectute l'outil qui crée le venv : `python -m venv .venv`
-      - on u
+      - on se active le venv en sourçant .venv:
+        linux: `sourrce .venv/bin/activate`
+        windows CMD: `.venv\Scripts\activate.bat`
+        windows powershell: `.venv\Scripts\Activate.PS1`
+
 
 Sources :
 https://realpython.com/python-pyproject-toml/#setting-up-a-python-project-with-pyprojecttoml

@@ -6,7 +6,10 @@ build-backend = "setuptools.build_meta"
 name = "robot-eirbot-2A-cdf-2027"
 version = "1.0.0"
 dependencies = [
-  "opencv",
+  "opencv-python",
   "pillow",
   "numpy"
 ]
+
+[project.scripts]
+vision = "vision.__main__:main"

@@ -1,0 +1,6 @@
+Metadata-Version: 2.4
+Name: robot-eirbot-2A-cdf-2027
+Version: 1.0.0
+Requires-Dist: opencv-python
+Requires-Dist: pillow
+Requires-Dist: numpy
