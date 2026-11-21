@@ -1,73 +1,90 @@
-import cv2.aruco as aruco
 import cv2
 import numpy as np
-from PIL import Image,ImageDraw,ImageFont,ImageSequence
+from PIL import Image, ImageDraw, ImageFont, ImageSequence
 import math as m
 import time
 from pathlib import Path
 from scipy.spatial.transform import Rotation
 import time
 
-class vision:
-    def __init__(self,image_width,image_height,image_only=True,default_window_size=(3840,2160)):
-        self.image_width=image_width
-        self.image_height=image_height
-        self.rawImage=None
-        self.image_from_cam=None
-        self.codesPossibles=aruco.getPredefinedDictionary(aruco.DICT_4X4_100)
-        self.detParam=aruco.DetectorParameters()
-        self.detParam.minMarkerPerimeterRate=0.01
-        self.detParam.cornerRefinementMethod=aruco.CORNER_REFINE_SUBPIX
-        self.det=aruco.ArucoDetector(self.codesPossibles,self.detParam)
-        self.image_only=image_only
-        if not image_only:
+default_cam_res = (3840, 2160)
 
-            print("direct capture on")
-            self.cap= cv2.VideoCapture(0)
-            print(self.cap.read())
-            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 3840)
-            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 2160)
-            self.image_from_cam=Image.fromarray(cv2.cvtColor(self.cap.read()[1],cv2.COLOR_BGR2RGB))
+"""
+aquisition :
+        if direct_capture:
+            print("Direct capture on")
+            self.cap = cv2.VideoCapture(0)
+            print("Capture info:", self.cap.read())
+            self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, cam_res[0])
+            self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, cam_res[1])
+            bgr_captured_image = self.cap.read()[1]
+            rgb_captured_image = cv2.cvtColor(captured_image, cv2.COLOR_BGR2RGB)
+            self.image_from_cam = Image.fromarray(rgb_captured_image)
             cv2.waitKey(1)
-            cv2.namedWindow("aruco detector", cv2.WINDOW_NORMAL)
-            cv2.resizeWindow("aruco detector",*default_window_size)
+            cv2.namedWindow("Aruco detector", cv2.WINDOW_NORMAL)
+            cv2.resizeWindow("Aruco detector", *cam_res)
 
 
-    def get_deformation_coefs(self,images_calib:list,grid_shape:tuple,cell_real_dim:float)->tuple:
-        assert images_calib != None, "pas d'image de calibration"
-        grid_cell_coos=[]
-        grid_shape=grid_shape[0]-1,grid_shape[1]-1
-        for y in range(grid_shape[1]):
-            for x in range(grid_shape[0]): 
-                grid_cell_coos.append(np.array([x*cell_real_dim,y*cell_real_dim,0.0]))
-        grid_cell_coos=np.array(grid_cell_coos,dtype=np.float32)
-        grid_cell_coos_found=[]
-        corners_found=[]
-        print("begin calibration")
+
+
+    def load_images(self, path: str, images_extentions: str) -> list:
+        images = []
+        files = Path(path)
+        for f in files.iterdir():
+            name=f.name
+            if name.split(".")[-1] in images_extentions:
+                images.append(Image.open(path+"/"+name))
+
+        return images
+"""
+
+class Vision:
+    possiblesCodes = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_100)
+    detParam = cv2.aruco.DetectorParameters()
+    detParam.minMarkerPerimeterRate = 0.01
+    detParam.cornerRefinementMethod = cv2.aruco.CORNER_REFINE_SUBPIX
+    det = cv2.aruco.ArucoDetector(Vision.codesPossibles, Vision.detParam)
+
+    def __init__(self, res = default_cam_res):
+        self.gray_image = None
+        self.res = res
+
+    # Get parameters to flatten image
+    def calibrate(
+        self,
+        images_calib: list,
+        chessboard_shape: tuple,
+        chessboeard_square_real_dim: float
+    ) -> tuple:
+        assert images_calib != None, "no calibration images"
+        chessboard_corner_shape = chessboard_shape[0] - 1, chessboard_shape[1] - 1
+        chessboard_cell_coos = np.array([
+            [
+                (x*chessboeard_square_real_dim, y*cell_real_dim, 0.0)
+                for x in range(chessboard_corner_shape[0]):
+            ]
+            for y in range(chessboard_corner_shape[1])
+        ], dtype = np.float32)
+        chessboard_cell_coos_found = []
+        corners_found = []
+        print("Begin calibration")
         for im in images_calib:
-            imnp=np.array(im)
-            imnp=cv2.cvtColor(imnp,cv2.COLOR_RGB2GRAY).astype(np.uint8)
-            success,corners=cv2.findChessboardCorners(imnp,grid_shape)
+            np_rgb_im = np.array(im)
+            np_gray_im = cv2.cvtColor(imnp, cv2.COLOR_RGB2GRAY).astype(np.uint8)
+            success, corners = cv2.findChessboardCorners(np_gray_im, chessboard_corner_shape)
             if success:
-                grid_cell_coos_found.append(grid_cell_coos.copy())
+                chessboard_cell_coos_found.append(chessboard_cell_coos.copy())
                 corners_found.append(corners)
-        success,K,D,_,_=cv2.calibrateCamera(grid_cell_coos_found,corners_found,(self.image_width,self.image_height),None,None)
+        im_dim = (self.image_width,self.image_height)
+        success, K, D, _, _ = cv2.calibrateCamera(chessboard_cell_coos_found, corners_found, im_dim, None, None)
         assert success, "erreur de lecture"
         print("calibration sucess")
-        return K,D
+        return K, D
 
-    type coos_aru=list
-    type ids=list
-    def get_aruco(self,image:Image.Image)->tuple[coos_aru,ids]:
-        if self.image_only == True:
-            self.rawImage=image
-        else:
-            self.image_from_cam=Image.fromarray(self.cap.read()[1])
-            cv2.waitKey(1)
-            self.rawImage=self.image_from_cam  
-        self.imagenp=np.array(self.rawImage) 
-        detections,ids,rejected=self.det.detectMarkers(self.imagenp)
-        corners=[]
+    # Find arucos coordonates in the image
+    def get_aruco(self, image: Image.Image) -> tuple[list, list]:
+        detections, ids, rejected = self.det.detectMarkers(self.imagenp)
+        corners = []
         print(ids)
         for c in detections:
             corners.append(c.reshape((2,4)))
@@ -79,59 +96,49 @@ class vision:
         return coos_aru, ids.tolist()
 
 
-    def load_images(self,path:str,images_extentions:str):
-        images=[]
-        files=Path(path)
-        for f in files.iterdir():
-            name=f.name
-            if name.split(".")[1] in images_extentions:
-                images.append(Image.open(path+"/"+name))
+    # Load images from files
 
-        
-        return images
-
-class timer_cl:
-    def __init__(self,name):
-        self.begin=time.time()
-        self.name=name
-
-    def get_dt(self):
-        dt=time.time()-self.begin
-        print(self.name,dt)
-        return dt
-
-class mode:
+class Mode:
     def __init__(self,log_timer:bool,draw_boxes:bool,single_image:bool,crop_detection:bool):
         self.log_timers=log_timer
         self.draw_boxes=draw_boxes
         self.single_image=single_image
         self.crop_detection=crop_detection
 
-class tags_infos:
-    def __init__(self,vision:vision,detect_mode:mode,update_coef:bool,images:list,dict_aruco_reel_size:dict,aruco_reel_pos:dict,tags_info_memory_max_len:int):
-        self.tags_info_memory_max_len=tags_info_memory_max_len
-        self.vi=vision
-        self.detect_mode=detect_mode
-        self.cam_orientation=None
-        self.cam_pos=None
-        self.cam_offset_mesured=np.array([])
-        self.dict_aruco_reel_size=dict_aruco_reel_size
-        self.aruco_reel_pos=aruco_reel_pos
-        self.output_image_detections=None
-        self.dict_tags_infos={}
-        self.corners_ref=np.array([[-1/2,1/2,0],[1/2,1/2,0],[1/2,-1/2,0],[-1/2,-1/2,0]])
-        self.table_aruco=(20,21,22,23)#arcuo fixes sur la tables
+class TagsInfos:
+    corners_ref = np.array([[-1, 1, 0], [1, 1, 0], [1, -1, 0], [-1, -1, 0]])/2
+    table_aruco = (20, 21, 22, 23)#arcuo fixes sur la tables
+    def __init__(
+        self,
+        vision: Vision,
+        detect_mode: mode,
+        update_coef: bool,
+        images: list,
+        dict_aruco_real_size: dict,
+        aruco_reel_pos: dict,
+        tags_info_memory_max_len: int
+    ):
+        self.tags_info_memory_max_len = tags_info_memory_max_len
+        self.vision = vision
+        self.detect_mode = detect_mode
+        self.cam_orientation = None
+        self.cam_pos = None
+        self.cam_offset_mesured = np.array([])
+        self.dict_aruco_real_size = dict_aruco_real_size
+        self.aruco_reel_pos = aruco_reel_poC
+        self.output_image_detections = None
+        self.dict_tags_infos = {}
         if update_coef:
-            self.K,self.D=vi.get_deformation_coefs(images,dim_damier_calib,cell_real_dim=30)
-            self.utilities.sav_coefs(self.K,self.D)
+            self.K, self.D = vi.calibrate(images, dim_damier_calib, cell_real_dim = 30)
+            self.utilities.save_coefs(self.K, self.D)
         else:
-            self.K,self.D=self.utilities.read_coefs()
-            
+            self.K, self.D = self.utilities.read_coefs()
+
     def creat_ref_aruco_tab(self,excluded:list):
         new_mat=[]
         for id in self.table_aruco:
             if id not in excluded:
-                new_mat.append(self.aruco_reel_pos[id]+self.corners_ref*self.dict_aruco_reel_size[id])
+                new_mat.append(self.aruco_reel_pos[id]+self.corners_ref*self.dict_aruco_real_size[id])
         return np.vstack(new_mat)
 
     def cam_offset_rot_calculation(self,image:Image.Image):
@@ -184,7 +191,12 @@ class tags_infos:
             sx=np.sin(rx)
             sy=np.sin(ry)
             sz=np.sin(rz)
-            return np.array([[cy*cz,sx*sy*cz-cx*sz,cx*sy*cz+sx*sz,offx],[cy*sz,sx*sy*sz+cx*cz,cx*sy*sz-sx*cz,offy],[-sy,sx*cy,cx*cy,offz],[0,0,0,1]])
+            return np.array([
+                [cy*cz, sx*sy*cz-cx*sz, cx*sy*cz+sx*sz, offx],
+                [cy*sz, sx*sy*sz+cx*cz, cx*sy*sz-sx*cz, offy],
+                [-sy,   sx*cy,          cx*cy,          offz],
+                [0,     0,              0,              1]
+            ])
 
         def get_corrected_matrix(self,coo_in_cam:np.array,angles_in_cam:np.array,rx,ry,rz,offx,offy,offz):
             rot_mat=self.get_rotation_matrix_matrix(rx,ry,rz,offx,offy,offz)
@@ -194,7 +206,7 @@ class tags_infos:
             angle=rot_mat[0:3,0:3]@angles_in_cam
             return coo, angle
 
-        def sav_coefs(K,D):
+        def save_coefs(K,D):
             np.save("K",K)
             np.save("D",D)
 
@@ -254,8 +266,8 @@ class tags_infos:
         for i in range(len(ids)):
             aruco_id=ids[i]
             if aruco_id in seeked_tags:
-                if aruco_id in self.dict_aruco_reel_size.keys():
-                    sucess,rot,coos=cv2.solvePnP(self.corners_ref*self.dict_aruco_reel_size[aruco_id],detections[i],self.K,self.D,flags=cv2.SOLVEPNP_IPPE_SQUARE)
+                if aruco_id in self.dict_aruco_real_size.keys():
+                    sucess,rot,coos=cv2.solvePnP(self.corners_ref*self.dict_aruco_real_size[aruco_id],detections[i],self.K,self.D,flags=cv2.SOLVEPNP_IPPE_SQUARE)
                     self.utilities.warning("getting coos failed",sucess)
                     
                     coo,angle=self.utilities().get_corrected_matrix(coos.ravel(),cv2.Rodrigues(rot)[0],*self.cam_orientation,*self.cam_pos)[:3]
@@ -295,7 +307,7 @@ images_total_res=(3840,2160)
 aruco_real_size={20:100,21:100,22:100,23:100,13:40,1:74}
 aruco_reel_pos={22:[600,600,0],23:[2400,600,0],20:[600,1400,0],21:[2400,1400,0]}
 detection_mode=mode(log_timer=True,draw_boxes=True,single_image=True,crop_detection=False)
-vi=vision(*images_total_res,image_only=detection_mode.single_image)
+vi=Vision(*images_total_res, direct_capture=not detection_mode.single_image)
 images_calib=vi.load_images(folder_path_calibration,images_extentions)
 
 tag_det=tags_infos(vi,detection_mode,False,images_calib,aruco_real_size,aruco_reel_pos,tags_info_memory_max_len=10)
@@ -319,14 +331,12 @@ if detection_mode.single_image:
     print(np.array([center,center+np.array(crop_detection_dim)]).flatten().tolist())
     ImageDraw.ImageDraw(im_out).rectangle(np.array([center,center+np.array(crop_detection_dim)]).flatten().tolist(),width=8,outline="blue")
     im_out.show()
-    
 
 else:
     im=Image.open("t1.png")
     tag_det.cam_offset_rot_calculation(im)
     begin=time.time()
 
-    
     timer=timer_cl("****************main****************")
     d,im=tag_det.get_aruco_pos((1,20,21,22,23))
     if 1 in d.keys():
@@ -344,5 +354,3 @@ else:
     #     images_out.append(tag_det.output_image_detections.resize((1920,1080)))
 
     # images_out[0].save("animation.gif",save_all=True,append_images=images_out[1:],duration=100, loop=0 )
-
-
